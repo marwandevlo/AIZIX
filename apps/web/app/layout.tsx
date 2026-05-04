@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AIZIX",
-  description: "AIZIX trading dashboard",
+  title: "AIZIX · AI Crypto Desk",
+  description: "Premium AI crypto trading dashboard — paper mode.",
 };
 
 export default function RootLayout({
@@ -27,7 +27,9 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex min-h-full flex-col bg-aizix-bg text-slate-100 antialiased">
+        {children}
+      </body>
     </html>
   );
 }

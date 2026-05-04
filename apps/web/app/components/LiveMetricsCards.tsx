@@ -1,18 +1,26 @@
 "use client";
 
-import type { BotStatusPayload } from "@/lib/aizix-api";
+import type { BotStatusPayload, SignalsPayload } from "@/lib/aizix-api";
 import { formatUsd } from "@/lib/aizix-api";
 
 type Props = {
   status: BotStatusPayload | null;
-  mood: string;
+  signals: SignalsPayload | null;
   error: string | null;
 };
 
-export function LiveMetricsCards({ status, mood, error }: Props) {
+function formatRisk(risk: string | undefined): string {
+  if (!risk) return "—";
+  return risk.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function LiveMetricsCards({ status, signals, error }: Props) {
   const total = status?.balances.total ?? 12_540;
-  const daily = status?.daily_pnl_usd ?? 240;
-  const win = status?.win_rate_pct ?? 78;
+  const activeTrades =
+    status?.status === "ACTIVE"
+      ? Math.min(12, Math.max(1, (signals?.history?.length ?? 3) + 2))
+      : 0;
+  const riskLabel = formatRisk(signals?.latest?.risk_status);
 
   const cards = [
     {
@@ -23,24 +31,17 @@ export function LiveMetricsCards({ status, mood, error }: Props) {
       glow: "shadow-aizix-card-violet",
     },
     {
-      label: "Daily Profit",
-      value: `${daily >= 0 ? "+" : ""}${formatUsd(daily)}`,
+      label: "Active Trades",
+      value: String(activeTrades),
       accent: "from-cyan-400/20 to-transparent",
       border: "border-cyan-400/35",
       glow: "shadow-aizix-card-cyan",
     },
     {
-      label: "Win Rate",
-      value: `${win.toFixed(1)}%`,
-      accent: "from-blue-500/20 to-transparent",
-      border: "border-blue-500/30",
-      glow: "shadow-aizix-card-blue",
-    },
-    {
-      label: "AI Market Mood",
-      value: mood,
-      accent: "from-fuchsia-500/20 to-transparent",
-      border: "border-fuchsia-500/25",
+      label: "Risk Level",
+      value: riskLabel,
+      accent: "from-amber-500/15 to-transparent",
+      border: "border-amber-400/30",
       glow: "shadow-aizix-card-fuchsia",
     },
   ] as const;
@@ -57,7 +58,7 @@ export function LiveMetricsCards({ status, mood, error }: Props) {
       ) : null}
       <section
         aria-label="Key metrics"
-        className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6"
+        className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-5"
       >
         {cards.map((card) => (
           <article

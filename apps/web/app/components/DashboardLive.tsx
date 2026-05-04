@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import type { BotStatusPayload, SignalsPayload } from "@/lib/aizix-api";
-import { fetchBotStatus, fetchSignals, postBotStart } from "@/lib/aizix-api";
+import { fetchBotStatus, fetchSignals } from "@/lib/aizix-api";
 import { SignalFeed } from "./SignalFeed";
 import { BotControlPanel } from "./BotControlPanel";
 import { LiveMetricsCards } from "./LiveMetricsCards";
@@ -21,7 +21,6 @@ export function DashboardLive({ children }: Props) {
   const [signals, setSignals] = useState<SignalsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pulse, setPulse] = useState(false);
-  const [ctaBusy, setCtaBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -52,43 +51,24 @@ export function DashboardLive({ children }: Props) {
     };
   }, [refresh]);
 
-  const mood = signals?.latest.market_mood ?? "—";
-
-  async function onHeroStart() {
-    setCtaBusy(true);
-    try {
-      await postBotStart();
-      await refresh();
-    } catch {
-      /* surfaced via next refresh error state */
-      await refresh();
-    } finally {
-      setCtaBusy(false);
-    }
-  }
-
   return (
-    <>
-      <LiveMetricsCards status={status} mood={mood} error={error} />
-      <SignalFeed signals={signals} pulse={pulse} error={error} />
-      {children}
-      <BotControlPanel
-        status={status?.status ?? "STOPPED"}
-        compoundingEnabled={status?.compounding_enabled ?? true}
-        balances={status?.balances ?? null}
-        onRemoteChange={refresh}
-      />
-      <div className="flex justify-center pb-8 sm:justify-start">
-        <button
-          type="button"
-          disabled={ctaBusy}
-          onClick={() => void onHeroStart()}
-          className="group relative w-full overflow-hidden rounded-2xl border border-cyan-400/30 bg-linear-to-r from-violet-600 via-blue-600 to-cyan-500 px-10 py-5 text-lg font-semibold tracking-wide text-white shadow-aizix-cta transition-all duration-300 hover:shadow-aizix-cta-hover disabled:opacity-60 sm:w-auto sm:min-w-70"
-        >
-          <span className="absolute inset-0 bg-linear-to-r from-white/0 via-white/10 to-white/0 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-          <span className="relative">{ctaBusy ? "Arming…" : "Start Trading"}</span>
-        </button>
+    <div className="flex flex-col gap-8 lg:gap-10">
+      <LiveMetricsCards status={status} signals={signals} error={error} />
+
+      <div className="aizix-signals-grid">
+        <div className="flex min-w-0 flex-col gap-6">
+          {children}
+          <BotControlPanel
+            status={status?.status ?? "STOPPED"}
+            compoundingEnabled={status?.compounding_enabled ?? true}
+            balances={status?.balances ?? null}
+            onRemoteChange={refresh}
+          />
+        </div>
+        <div className="min-w-0">
+          <SignalFeed signals={signals} pulse={pulse} error={error} />
+        </div>
       </div>
-    </>
+    </div>
   );
 }
