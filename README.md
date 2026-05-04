@@ -53,10 +53,21 @@ python -m venv .venv
 # source .venv/bin/activate
 
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 API docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+See **`apps/api/README.md`** for module map, full route list, and `curl` examples.
+
+### Quick API checks
+
+```bash
+curl -s http://127.0.0.1:8000/health
+curl -s http://127.0.0.1:8000/market
+curl -s http://127.0.0.1:8000/signals
+curl -s http://127.0.0.1:8000/portfolio
+```
 
 ### 4. Supabase schema
 
