@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000"
 
     paper_trading: bool = Field(default=True, alias="PAPER_TRADING")
+    live_trading_enabled: bool = Field(
+        default=False,
+        alias="LIVE_TRADING_ENABLED",
+        description="Must remain false for this codebase — no live order routing.",
+    )
 
     max_daily_loss_pct: float = Field(default=5.0, alias="MAX_DAILY_LOSS")
     max_risk_per_trade_pct: float = Field(default=2.0, alias="MAX_RISK_PER_TRADE")
@@ -29,7 +34,11 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
         description="SQLAlchemy URL (PostgreSQL or SQLite).",
     )
-    jwt_secret_key: str = Field(default="change-me-in-production", alias="JWT_SECRET_KEY")
+    jwt_secret_key: str = Field(
+        default="change-me-in-production",
+        validation_alias=AliasChoices("JWT_SECRET_KEY", "SECRET_KEY"),
+        description="Signing key for JWTs. Prefer JWT_SECRET_KEY; SECRET_KEY is accepted as an alias.",
+    )
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     access_token_expire_minutes: int = Field(default=60 * 24 * 7, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
     require_auth: bool = Field(
@@ -40,7 +49,11 @@ class Settings(BaseSettings):
     demo_user_email: str = Field(default="demo@aizix.local", alias="DEMO_USER_EMAIL")
     demo_user_password: str = Field(default="demo1234", alias="DEMO_USER_PASSWORD")
     binance_base_url: str = Field(default="https://api.binance.com", alias="BINANCE_BASE_URL")
-    use_binance_market: bool = Field(default=True, alias="USE_BINANCE_MARKET")
+    use_binance_market: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("USE_BINANCE_MARKET", "BINANCE_PUBLIC_DATA"),
+        description="Use Binance public REST for market snapshots when true.",
+    )
 
     signal_latency_ms_min: int = 80
     signal_latency_ms_max: int = 280

@@ -25,6 +25,7 @@ class User(Base):
 
     trades: Mapped[list["TradeRecord"]] = relationship(back_populates="user")
     signals: Mapped[list["SignalRecord"]] = relationship(back_populates="user")
+    audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="user")
     strategies: Mapped[list["Strategy"]] = relationship(back_populates="user")
     portfolio: Mapped["Portfolio | None"] = relationship(
         back_populates="user",
@@ -50,6 +51,8 @@ class Portfolio(Base):
 
 
 class TradeRecord(Base):
+    """Closed paper legs. Application code inserts only — never updates historical rows."""
+
     __tablename__ = "trades"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -86,6 +89,26 @@ class SignalRecord(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_utc_now)
 
     user: Mapped["User"] = relationship(back_populates="signals")
+
+
+class AuditLog(Base):
+    """Append-only audit trail (insert only; never update or delete via app)."""
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    session_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, index=True)
+    action_type: Mapped[str] = mapped_column(String(48), index=True)
+    symbol: Mapped[str] = mapped_column(String(64), default="")
+    decision: Mapped[str] = mapped_column(String(255), default="")
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    risk_level: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+
+    user: Mapped["User"] = relationship(back_populates="audit_logs")
 
 
 class Strategy(Base):

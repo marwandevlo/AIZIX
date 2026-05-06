@@ -275,6 +275,133 @@ async function refreshPerformance() {
   renderPerfDaily(perf.daily || []);
 }
 
+const AUDIT_ACTION_TYPES = [
+  "",
+  "SIGNAL",
+  "PAPER_OPEN",
+  "TRADE_CLOSE",
+  "BOT_START",
+  "BOT_PAUSE",
+  "BOT_STOP",
+  "BOT_EMERGENCY",
+  "BACKTEST_RUN",
+  "BACKTEST_COMPARE",
+  "SETTINGS_CHANGE",
+  "RISK_BOT_INACTIVE",
+  "RISK_CONFIDENCE",
+  "RISK_DAILY_LOSS",
+  "RISK_EMERGENCY_ACTIVE",
+  "RISK_BLOCKED",
+];
+
+function auditIsRiskRow(e) {
+  const t = e.action_type || "";
+  return (
+    t.startsWith("RISK") ||
+    t === "BOT_EMERGENCY" ||
+    t === "BOT_STOP"
+  );
+}
+
+function wireAuditFilters() {
+  const sel = document.getElementById("audit-filter-type");
+  if (sel && !sel.options.length) {
+    AUDIT_ACTION_TYPES.forEach((v) => {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = v || "(all types)";
+      sel.appendChild(o);
+    });
+  }
+  document.getElementById("btn-audit-apply")?.addEventListener("click", () => refreshAudit().catch(() => {}));
+  document.getElementById("audit-filter-risk-only")?.addEventListener("change", () => refreshAudit().catch(() => {}));
+}
+
+function renderAuditTimeline(rows) {
+  const host = document.getElementById("audit-timeline");
+  if (!host) return;
+  host.innerHTML = "";
+  const riskOnly = document.getElementById("audit-filter-risk-only")?.checked;
+  let list = rows || [];
+  if (riskOnly) list = list.filter(auditIsRiskRow);
+  if (!list.length) {
+    host.innerHTML = '<p class="muted tiny audit-empty">No events match the current filters.</p>';
+    return;
+  }
+  list.forEach((e) => {
+    const risk = auditIsRiskRow(e);
+    const art = document.createElement("article");
+    art.className = `audit-row${risk ? " audit-row--risk" : ""}`;
+    const meta = e.metadata && typeof e.metadata === "object" && Object.keys(e.metadata).length;
+    const metaJson = meta ? JSON.stringify(e.metadata, null, 2) : "";
+    art.innerHTML = `
+      <div class="audit-row-axis"></div>
+      <div class="audit-row-inner">
+        <header class="audit-row-head">
+          <time class="muted tiny mono">${fmtTime(e.timestamp)}</time>
+          <span class="audit-badge mono">${e.action_type}</span>
+          ${e.session_id ? `<span class="muted tiny mono audit-sess">sess …${String(e.session_id).slice(-8)}</span>` : ""}
+        </header>
+        <div class="audit-row-grid">
+          <div><span class="muted tiny">Symbol</span><div class="mono">${e.symbol || "—"}</div></div>
+          <div><span class="muted tiny">Decision</span><div class="mono">${e.decision || "—"}</div></div>
+          <div><span class="muted tiny">Conf.</span><div class="mono">${e.confidence != null ? Number(e.confidence).toFixed(1) : "—"}</div></div>
+          <div><span class="muted tiny">Risk lvl</span><div class="mono">${e.risk_level ?? "—"}</div></div>
+        </div>
+        <p class="audit-reason muted tiny"></p>
+      </div>`;
+    const rpc = art.querySelector(".audit-reason");
+    if (rpc) rpc.textContent = e.reason || "";
+    if (metaJson) {
+      const inner = art.querySelector(".audit-row-inner");
+      const det = document.createElement("details");
+      det.className = "audit-meta-wrap";
+      det.innerHTML = `<summary class="muted tiny">Metadata</summary>`;
+      const pre = document.createElement("pre");
+      pre.className = "audit-meta mono tiny";
+      pre.textContent = metaJson;
+      det.appendChild(pre);
+      inner?.appendChild(det);
+    }
+    host.appendChild(art);
+  });
+}
+
+function renderAuditSignals(rows) {
+  const tb = document.getElementById("tbody-audit-signals");
+  if (!tb) return;
+  tb.innerHTML = "";
+  (rows || []).forEach((s) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="muted tiny">${fmtTime(s.timestamp)}</td>
+      <td class="mono">${s.pair}</td>
+      <td class="mono">${s.action}</td>
+      <td class="mono">${Number(s.confidence_pct).toFixed(1)}%</td>
+      <td class="mono">${s.risk_level ?? "—"}</td>`;
+    const td = document.createElement("td");
+    td.className = "muted tiny perf-reason";
+    td.title = s.reason || "";
+    td.textContent = s.reason || "—";
+    tr.appendChild(td);
+    tb.appendChild(tr);
+  });
+}
+
+async function refreshAudit() {
+  const params = new URLSearchParams({ limit: "150", order: "asc" });
+  const ft = document.getElementById("audit-filter-type")?.value;
+  const fs = document.getElementById("audit-filter-symbol")?.value?.trim();
+  if (ft) params.set("action_type", ft);
+  if (fs) params.set("symbol_contains", fs);
+  const [logsRes, sigRes] = await Promise.all([
+    api(`/api/audit/logs?${params}`),
+    api("/api/signals/history?limit=100"),
+  ]);
+  renderAuditTimeline(logsRes.logs || []);
+  renderAuditSignals(sigRes.signals || []);
+}
+
 function bindViews() {
   document.querySelectorAll(".nav-link").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -282,6 +409,7 @@ function bindViews() {
       document.querySelectorAll(".nav-link").forEach((b) => b.classList.toggle("active", b === btn));
       document.querySelectorAll(".view").forEach((el) => el.classList.toggle("active", el.id === `view-${v}`));
       if (v === "performance") refreshPerformance().catch(() => {});
+      if (v === "audit") refreshAudit().catch(() => {});
     });
   });
 }
@@ -461,6 +589,11 @@ function renderTrades(rows) {
       <td class="mono">${t.side}</td>
       <td class="mono ${cls}">${fmtUsd(t.pnl_usd)}</td>
       <td class="mono ${cls}">${Number(t.pnl_pct).toFixed(2)}%</td>`;
+    const tdR = document.createElement("td");
+    tdR.className = "muted tiny perf-reason";
+    tdR.title = t.reason || "";
+    tdR.textContent = t.reason || "—";
+    tr.appendChild(tdR);
     tb.appendChild(tr);
   });
 }
@@ -584,6 +717,9 @@ async function refreshPortfolio() {
 
   if (document.getElementById("view-performance")?.classList.contains("active")) {
     refreshPerformance().catch(() => {});
+  }
+  if (document.getElementById("view-audit")?.classList.contains("active")) {
+    refreshAudit().catch(() => {});
   }
 }
 
@@ -816,6 +952,8 @@ async function loop() {
 document.addEventListener("DOMContentLoaded", () => {
   initChart();
   bindViews();
+  wireAuditFilters();
+  document.getElementById("btn-audit-refresh")?.addEventListener("click", () => refreshAudit().catch(() => {}));
   bindTf();
   wirePrefsInputs();
   wireBot();

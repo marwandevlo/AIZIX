@@ -1,0 +1,11 @@
+# Render Blueprint — AIZIX FastAPI backend.
+# Repository deploy root for paths below: monorepo root (parent of apps/).
+# If you register this file from the dashboard, set Blueprint path to: apps/api/render.yaml
+services:
+  - type: web
+    runtime: python
+    name: aizix-api
+    rootDir: apps/api
+    buildCommand: pip install -r requirements-production.txt
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health

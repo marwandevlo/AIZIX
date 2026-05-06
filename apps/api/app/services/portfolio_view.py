@@ -96,6 +96,7 @@ def build_portfolio_payload(
             "pnl_usd": t.pnl_usd,
             "pnl_pct": t.pnl_pct,
             "closed_at": t.closed_at,
+            "reason": getattr(t, "reason", None) or "—",
         }
         for t in db_trades
     ]
@@ -110,6 +111,7 @@ def build_portfolio_payload(
                 "pnl_usd": t.pnl_usd,
                 "pnl_pct": t.pnl_pct,
                 "closed_at": t.closed_at,
+                "reason": (getattr(t, "reason", None) or "").strip() or "—",
             }
             for t in paper.recent_closed(25)
         ]

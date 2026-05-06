@@ -22,6 +22,7 @@
         <button type="button" class="nav-link" data-view="signals">Signals</button>
         <button type="button" class="nav-link" data-view="portfolio">Portfolio</button>
         <button type="button" class="nav-link" data-view="performance">Performance</button>
+        <button type="button" class="nav-link" data-view="audit">Audit logs</button>
         <button type="button" class="nav-link" data-view="backtest">Backtesting</button>
         <button type="button" class="nav-link" data-view="risk">Risk</button>
         <button type="button" class="nav-link" data-view="settings">Settings</button>
@@ -178,7 +179,7 @@
               <div class="table-scroll">
                 <table class="table">
                   <thead>
-                    <tr><th>Time</th><th>Pair</th><th>Side</th><th>PnL</th><th>PnL %</th></tr>
+                    <tr><th>Time</th><th>Pair</th><th>Side</th><th>PnL</th><th>PnL %</th><th>Reason</th></tr>
                   </thead>
                   <tbody id="tbody-trades"></tbody>
                 </table>
@@ -322,6 +323,52 @@
                     <tr><th>Date</th><th>Trades</th><th>Wins</th><th>Losses</th><th>Net PnL</th><th>Drawdown</th></tr>
                   </thead>
                   <tbody id="perf-tbody-daily"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-audit" class="view">
+          <div class="card audit-hero">
+            <div class="audit-hero-row">
+              <div>
+                <h2 class="h2">Audit logs</h2>
+                <p class="muted tiny audit-lead">Append-only timeline: signals, paper execution, closes, bot lifecycle, risk blocks, backtests, and settings. Historical rows are never edited.</p>
+              </div>
+              <button type="button" class="btn btn-secondary btn-xs" id="btn-audit-refresh">Refresh</button>
+            </div>
+            <p class="perf-disclaimer" style="margin-top:0.75rem">Paper venue only. Operational transparency — not a regulatory record.</p>
+          </div>
+
+          <div class="audit-toolbar card">
+            <div class="audit-toolbar-inner">
+              <label class="audit-field"><span class="muted tiny">Action type</span>
+                <select id="audit-filter-type"></select>
+              </label>
+              <label class="audit-field"><span class="muted tiny">Symbol contains</span>
+                <input type="text" id="audit-filter-symbol" placeholder="e.g. BTC3L" autocomplete="off" />
+              </label>
+              <label class="audit-check muted tiny"><input type="checkbox" id="audit-filter-risk-only" /> Show only risk &amp; kill-switch events</label>
+              <button type="button" class="btn btn-ghost btn-xs" id="btn-audit-apply">Apply filters</button>
+            </div>
+          </div>
+
+          <div class="audit-panels">
+            <div class="card audit-events-card">
+              <h2 class="h2">Event timeline</h2>
+              <p class="muted tiny">Chronological (oldest → newest within the loaded window). Session id available via <code class="mono">X-Session-Id</code> header on mutations.</p>
+              <div id="audit-timeline" class="audit-timeline"></div>
+            </div>
+            <div class="card">
+              <h2 class="h2">Signal history</h2>
+              <p class="muted tiny">Last 100 persisted signals from the engine.</p>
+              <div class="table-scroll">
+                <table class="table table-tight">
+                  <thead>
+                    <tr><th>Time</th><th>Pair</th><th>Action</th><th>Conf.</th><th>Risk</th><th>Reason</th></tr>
+                  </thead>
+                  <tbody id="tbody-audit-signals"></tbody>
                 </table>
               </div>
             </div>

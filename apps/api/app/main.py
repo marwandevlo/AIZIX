@@ -10,12 +10,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -35,7 +36,13 @@ from app.modules.compounding import wallet_balances
 from app.modules.signal_engine import SignalEngine
 from app.routers import auth as auth_router
 from app.routers import strategies as strategies_router
-from app.services.persistence import persist_closed_trade, persist_signal_row
+from app.services.persistence import (
+    append_audit_log,
+    fetch_audit_logs,
+    fetch_signal_history,
+    persist_closed_trade,
+    persist_signals_bundle,
+)
 from app.services.performance_report import build_performance_payload
 from app.services.portfolio_view import build_portfolio_payload
 from app.services.user_runtime import get_user_runtime, persist_dashboard_prefs
@@ -111,6 +118,25 @@ class PaperExecuteBody(BaseModel):
     qty: float | None = None
     confidence_pct: float | None = None
     reason: str | None = Field(default=None, description="Attribution note stored with closed trade metadata")
+
+
+def _risk_event_action_type(code: str | None) -> str:
+    if not code:
+        return "RISK_BLOCKED"
+    return {
+        "low_confidence": "RISK_CONFIDENCE",
+        "max_daily_loss": "RISK_DAILY_LOSS",
+        "emergency_stop": "RISK_EMERGENCY_ACTIVE",
+    }.get(code, "RISK_BLOCKED")
+
+
+def _session_id_from_request(request: Request) -> str | None:
+    s = (request.headers.get("x-session-id") or request.headers.get("X-Session-Id") or "").strip()
+    return s[:64] if s else None
+
+
+def _audit(request: Request, db: Session, user_id: int, **kwargs: Any) -> None:
+    append_audit_log(db, user_id=user_id, session_id=_session_id_from_request(request), **kwargs)
 
 
 class DashPrefsBody(BaseModel):
@@ -263,15 +289,28 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/api/health")
-    async def api_health() -> dict[str, Any]:
-        return {
-            "ok": True,
+    async def api_health() -> JSONResponse:
+        db_status = "error"
+        try:
+            with SessionLocal() as db:
+                db.execute(text("SELECT 1"))
+            db_status = "ok"
+        except Exception:
+            db_status = "error"
+        overall_ok = db_status == "ok"
+        payload: dict[str, Any] = {
+            "ok": overall_ok,
+            "status": "healthy" if overall_ok else "degraded",
             "version": "3.0.0",
-            "paper_trading": True,
+            "paper_trading": settings.paper_trading,
+            "live_trading_enabled": settings.live_trading_enabled,
             "product": "aizix-os",
             "require_auth": settings.require_auth,
             "market": "binance" if settings.use_binance_market else "synthetic",
+            "database": db_status,
+            "binance_public_data": settings.use_binance_market,
         }
+        return JSONResponse(content=payload, status_code=200 if overall_ok else 503)
 
     @app.get("/api/market")
     async def api_market(request: Request) -> dict[str, Any]:
@@ -324,23 +363,17 @@ def create_app() -> FastAPI:
                     }
                 )
                 break
-        now = time.time()
-        if now - rt.last_signal_persist_ts >= 45.0:
-            for row in result.get("signals", []):
-                if row.get("pair") == dash.pair:
-                    persist_signal_row(
-                        db,
-                        user_id=user.id,
-                        pair=str(row["pair"]),
-                        action=str(row["action"]),
-                        confidence_pct=float(row["confidence_pct"]),
-                        risk_score=row.get("risk_score"),
-                        risk_level=str(row.get("risk_level")) if row.get("risk_level") else None,
-                        reason=row.get("reason"),
-                        as_of=str(result.get("as_of", "")),
-                    )
-                    rt.last_signal_persist_ts = now
-                    break
+        as_of = str(result.get("as_of") or "")
+        sig_rows = list(result.get("signals") or [])
+        if sig_rows and as_of and as_of != getattr(rt, "last_persisted_signal_as_of", None):
+            persist_signals_bundle(
+                db,
+                user_id=user.id,
+                as_of=as_of,
+                signal_rows=sig_rows,
+                session_id=_session_id_from_request(request),
+            )
+            rt.last_persisted_signal_as_of = as_of
         return result
 
     @app.get("/api/positions")
@@ -394,6 +427,42 @@ def create_app() -> FastAPI:
             paper=rt.paper,
         )
 
+    @app.get("/api/audit/logs")
+    async def api_audit_logs(
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+        limit: int = Query(100, ge=1, le=500),
+        action_type: str | None = Query(None, description="Exact action_type filter"),
+        symbol_contains: str | None = Query(None, description="Substring match on symbol"),
+        order: Literal["desc", "asc"] = Query(
+            "desc",
+            description="desc=newest first; asc=reverse (timeline chronological among returned rows)",
+        ),
+    ) -> dict[str, Any]:
+        return {
+            "schema_version": 2,
+            "append_only": True,
+            "logs": fetch_audit_logs(
+                db,
+                user_id=user.id,
+                limit=limit,
+                action_type=action_type,
+                symbol_contains=symbol_contains,
+                order=order,
+            ),
+        }
+
+    @app.get("/api/signals/history")
+    async def api_signals_history(
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+        limit: int = Query(100, ge=1, le=200),
+    ) -> dict[str, Any]:
+        return {
+            "schema_version": 2,
+            "signals": fetch_signal_history(db, user_id=user.id, limit=limit),
+        }
+
     @app.get("/api/compounding")
     async def api_compounding(request: Request, user: CurrentUser) -> dict[str, Any]:
         rt = get_user_runtime(request.app, user, settings, DashboardState)
@@ -442,6 +511,7 @@ def create_app() -> FastAPI:
     async def bot_start(
         request: Request,
         user: CurrentUser,
+        db: Session = Depends(get_db),
         body: BotBody | None = None,
     ) -> dict[str, str]:
         rt = get_user_runtime(request.app, user, settings, DashboardState)
@@ -450,37 +520,93 @@ def create_app() -> FastAPI:
         dash.status = "ACTIVE"
         if body and body.risk_level is not None:
             dash.risk_level = max(1, min(100, int(body.risk_level)))
+        _audit(
+            request,
+            db,
+            user.id,
+            action_type="BOT_START",
+            symbol=dash.pair,
+            decision="ACTIVE",
+            risk_level=str(dash.risk_level),
+            reason="Trading engine started (paper). Emergency latch cleared.",
+            metadata={"bot_status": dash.status},
+        )
         return {"status": dash.status}
 
     @app.post("/api/bot/pause")
-    async def bot_pause(request: Request, user: CurrentUser) -> dict[str, str]:
+    async def bot_pause(request: Request, user: CurrentUser, db: Session = Depends(get_db)) -> dict[str, str]:
         rt = get_user_runtime(request.app, user, settings, DashboardState)
         rt.dash.status = "PAUSED"
+        _audit(
+            request,
+            db,
+            user.id,
+            action_type="BOT_PAUSE",
+            symbol=rt.dash.pair,
+            decision="PAUSED",
+            risk_level=str(rt.dash.risk_level),
+            reason="Trading engine paused (paper).",
+            metadata={"bot_status": rt.dash.status},
+        )
         return {"status": rt.dash.status}
 
     @app.post("/api/bot/stop")
-    async def bot_stop(request: Request, user: CurrentUser) -> dict[str, str]:
+    async def bot_stop(request: Request, user: CurrentUser, db: Session = Depends(get_db)) -> dict[str, str]:
         rt = get_user_runtime(request.app, user, settings, DashboardState)
         rt.risk.set_emergency_stop(True)
         rt.dash.status = "STOPPED"
+        _audit(
+            request,
+            db,
+            user.id,
+            action_type="BOT_STOP",
+            symbol="",
+            decision="STOPPED",
+            risk_level=str(rt.dash.risk_level),
+            reason="Bot stopped: kill switch engaged (paper).",
+            metadata={"kill_switch": True},
+        )
         return {"status": rt.dash.status}
 
     @app.post("/api/bot/emergency-stop")
-    async def bot_emergency(request: Request, user: CurrentUser) -> dict[str, str]:
+    async def bot_emergency(request: Request, user: CurrentUser, db: Session = Depends(get_db)) -> dict[str, str]:
         rt = get_user_runtime(request.app, user, settings, DashboardState)
         rt.risk.set_emergency_stop(True)
         rt.dash.status = "STOPPED"
+        _audit(
+            request,
+            db,
+            user.id,
+            action_type="BOT_EMERGENCY",
+            symbol="",
+            decision="EMERGENCY",
+            risk_level=str(rt.dash.risk_level),
+            reason="User invoked emergency stop (paper).",
+            metadata={"kill_switch": True},
+        )
         return {"status": "EMERGENCY", "bot": rt.dash.status}
 
     @app.post("/api/paper-trade/execute")
     async def paper_execute(
         request: Request,
         user: CurrentUser,
+        db: Session = Depends(get_db),
         body: PaperExecuteBody | None = None,
     ) -> dict[str, Any]:
         rt = get_user_runtime(request.app, user, settings, DashboardState)
         dash = rt.dash
         if dash.status != "ACTIVE":
+            sym0 = str(body.symbol) if body and body.symbol else str(dash.pair)
+            _audit(
+                request,
+                db,
+                user.id,
+                action_type="RISK_BOT_INACTIVE",
+                symbol=str(sym0),
+                decision="BLOCKED",
+                reason="Bot not ACTIVE — no paper execution.",
+                metadata={"dash_status": dash.status},
+            )
             return {"ok": False, "message": "Bot not ACTIVE — no paper execution."}
         body = body or PaperExecuteBody()
         sym = body.symbol or dash.pair
@@ -507,6 +633,24 @@ def create_app() -> FastAPI:
             reason=reason,
         )
         if res.position:
+            _audit(
+                request,
+                db,
+                user.id,
+                action_type="PAPER_OPEN",
+                symbol=sym,
+                decision=str(side).upper(),
+                confidence=conf,
+                risk_level=str(dash.risk_level),
+                reason=reason,
+                metadata={
+                    "qty": qty,
+                    "reference_price": px,
+                    "position_id": res.position.id,
+                    "sl_pct": dash.sl_pct,
+                    "tp_pct": dash.tp_pct,
+                },
+            )
             return {
                 "ok": True,
                 "message": res.message,
@@ -519,6 +663,18 @@ def create_app() -> FastAPI:
                     "stop_badge": res.position.stop_mode,
                 },
             }
+        _audit(
+            request,
+            db,
+            user.id,
+            action_type=_risk_event_action_type(res.risk_code),
+            symbol=sym,
+            decision=str(res.risk_code or "blocked"),
+            confidence=conf,
+            risk_level=str(dash.risk_level),
+            reason=res.message,
+            metadata={"risk_code": res.risk_code, "qty": qty},
+        )
         return {"ok": False, "message": res.message}
 
     @app.post("/api/paper-trade/close-all")
@@ -533,6 +689,22 @@ def create_app() -> FastAPI:
         for c in closed:
             rt.risk.record_close_pnl_pct(c.pnl_pct)
             persist_closed_trade(db, user_id=user.id, trade=c, opened_at=None)
+            _audit(
+                request,
+                db,
+                user.id,
+                action_type="TRADE_CLOSE",
+                symbol=c.symbol,
+                decision=f"{str(c.side).upper()} pnl_usd={c.pnl_usd}",
+                confidence=getattr(c, "confidence_pct", None),
+                risk_level=getattr(c, "risk_level", None),
+                reason=(getattr(c, "reason", None) or "Paper close-all"),
+                metadata={
+                    "pnl_usd": c.pnl_usd,
+                    "pnl_pct": c.pnl_pct,
+                    "bulk_close": True,
+                },
+            )
         return {"closed": len(closed), "trades": [c.__dict__ for c in closed]}
 
     @app.post("/api/paper-trade/close")
@@ -553,6 +725,18 @@ def create_app() -> FastAPI:
         if ct:
             rt.risk.record_close_pnl_pct(ct.pnl_pct)
             persist_closed_trade(db, user_id=user.id, trade=ct, opened_at=pos.opened_at)
+            _audit(
+                request,
+                db,
+                user.id,
+                action_type="TRADE_CLOSE",
+                symbol=ct.symbol,
+                decision=f"{str(ct.side).upper()} pnl_usd={ct.pnl_usd}",
+                confidence=getattr(ct, "confidence_pct", None),
+                risk_level=getattr(ct, "risk_level", None),
+                reason=ct.reason or "Paper position closed",
+                metadata={"pnl_usd": ct.pnl_usd, "pnl_pct": ct.pnl_pct},
+            )
             return {"ok": True, "trade": ct.__dict__}
         return {"ok": False, "message": "Close failed."}
 
@@ -561,34 +745,103 @@ def create_app() -> FastAPI:
         request: Request,
         user: CurrentUser,
         body: BacktestRequest,
+        db: Session = Depends(get_db),
     ) -> dict[str, Any]:
         result = _run_backtest_core(body, settings.binance_base_url)
         rt = get_user_runtime(request.app, user, settings, DashboardState)
         rt.dash.last_backtest = result
+        st = result.get("structured") if isinstance(result, dict) else None
+        pf = None
+        if isinstance(st, dict) and isinstance(st.get("performance"), dict):
+            pf = st["performance"].get("profit_factor")
+        _audit(
+            request,
+            db,
+            user.id,
+            action_type="BACKTEST_RUN",
+            symbol=body.pair,
+            decision=str(body.source),
+            reason="Backtest run completed (paper simulation).",
+            metadata={
+                "days": body.days,
+                "sl_pct": body.sl_pct,
+                "tp_pct": body.tp_pct,
+                "optimization_objective": body.optimization_objective,
+                "total_return_pct": result.get("total_return_pct"),
+                "max_drawdown_pct": result.get("max_drawdown_pct"),
+                "schema_version": st.get("schema_version") if isinstance(st, dict) else None,
+                "profit_factor": pf or result.get("profit_factor"),
+            },
+        )
         return result
 
     @app.post("/api/backtest/compare")
-    async def backtest_compare(body: BacktestCompareRequest) -> dict[str, Any]:
+    async def backtest_compare(
+        request: Request,
+        user: CurrentUser,
+        body: BacktestCompareRequest,
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
         if body.source == "synthetic":
-            return compare_backtests_synthetic(
+            result = compare_backtests_synthetic(
                 configs=body.configs, days=body.days, objective=body.optimization_objective
             )
-        return compare_backtests_binance(
-            configs=body.configs,
-            days=body.days,
-            base_url=settings.binance_base_url,
-            objective=body.optimization_objective,
+        else:
+            result = compare_backtests_binance(
+                configs=body.configs,
+                days=body.days,
+                base_url=settings.binance_base_url,
+                objective=body.optimization_objective,
+            )
+        best = result.get("best") if isinstance(result, dict) else None
+        _audit(
+            request,
+            db,
+            user.id,
+            action_type="BACKTEST_COMPARE",
+            symbol="",
+            decision=str(body.source),
+            reason="Backtest sleeve comparison completed.",
+            metadata={
+                "days": body.days,
+                "configs_count": len(body.configs),
+                "optimization_objective": body.optimization_objective,
+                "best_label": best.get("label") if isinstance(best, dict) else None,
+                "best_return_pct": best.get("total_return_pct") if isinstance(best, dict) else None,
+            },
         )
+        return result
 
     @app.post("/api/backtest/apply-best-settings")
-    async def backtest_apply(request: Request, user: CurrentUser) -> dict[str, Any]:
+    async def backtest_apply(
+        request: Request,
+        user: CurrentUser,
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
         rt = get_user_runtime(request.app, user, settings, DashboardState)
         dash = rt.dash
         if not dash.last_backtest:
             return {"ok": False, "message": "Run a backtest first."}
         rec = dash.last_backtest
+        prev_sl, prev_tp = dash.sl_pct, dash.tp_pct
         dash.sl_pct = float(rec.get("recommended_sl_pct", dash.sl_pct))
         dash.tp_pct = float(rec.get("recommended_tp_pct", dash.tp_pct))
+        _audit(
+            request,
+            db,
+            user.id,
+            action_type="SETTINGS_CHANGE",
+            symbol=dash.pair,
+            decision="apply_backtest_recommendation",
+            risk_level=str(dash.risk_level),
+            reason="Applied recommended SL/TP from last backtest.",
+            metadata={
+                "previous_sl_pct": prev_sl,
+                "previous_tp_pct": prev_tp,
+                "new_sl_pct": dash.sl_pct,
+                "new_tp_pct": dash.tp_pct,
+            },
+        )
         return {
             "ok": True,
             "sl_pct": dash.sl_pct,
@@ -653,6 +906,18 @@ def create_app() -> FastAPI:
         )
         _sync_portfolio_row(db, user, d, payload["portfolio_value_usd"])
         db.commit()
+        if data:
+            _audit(
+                request,
+                db,
+                user.id,
+                action_type="SETTINGS_CHANGE",
+                symbol=d.pair,
+                decision="dashboard_preferences",
+                risk_level=str(d.risk_level),
+                reason="Dashboard preferences updated.",
+                metadata={"changed_keys": list(data.keys()), "patch": data},
+            )
         return {"ok": True, "dashboard": payload}
 
     @app.post("/api/dashboard/save-strategy")

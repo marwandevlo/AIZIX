@@ -20,6 +20,7 @@ class UserRuntime:
     signal_history: deque
     last_signal_snapshot: dict[str, Any] | None = None
     last_signal_persist_ts: float = 0.0
+    last_persisted_signal_as_of: str | None = None
 
 
 def _dash_from_prefs(user: User, settings: Settings, DashCls: type) -> Any:

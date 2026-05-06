@@ -52,6 +52,7 @@ class ExecuteResult:
     ok: bool
     message: str
     position: OpenPosition | None = None
+    risk_code: str | None = None
 
 
 class PaperTrader:
@@ -124,7 +125,7 @@ class PaperTrader:
             open_positions=self.open_count(),
         )
         if not decision.allowed:
-            return ExecuteResult(False, decision.message, None)
+            return ExecuteResult(False, decision.message, None, risk_code=decision.code)
 
         sl_p, tp_p = self._sl_tp(side, price, sl_pct, tp_pct)
         stop_px, mode = next_trail_price(
@@ -182,6 +183,7 @@ class PaperTrader:
             self._wins += 1
         else:
             self._losses += 1
+        close_reason = (getattr(pos, "reason", None) or "").strip() or "Paper position closed"
         ct = ClosedTrade(
             id=str(uuid.uuid4()),
             symbol=pos.symbol,
@@ -194,7 +196,7 @@ class PaperTrader:
             closed_at=datetime.now(timezone.utc).isoformat(),
             confidence_pct=getattr(pos, "confidence_pct", None),
             risk_level=getattr(pos, "risk_level", None),
-            reason=getattr(pos, "reason", None),
+            reason=close_reason,
         )
         self._closed.append(ct)
         return ct

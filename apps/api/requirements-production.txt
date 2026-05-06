@@ -1,0 +1,9 @@
+# Production / PaaS (Render, Railway): install everything the API needs at runtime.
+# Usage from this directory: pip install -r requirements-production.txt
+#
+# Core stack (also satisfied transitively):
+# - fastapi, uvicorn, jinja2, python-dotenv, pydantic, pydantic-settings, python-multipart, requests
+
+-r requirements.txt
+python-dotenv>=1.0.1
+requests>=2.32.3

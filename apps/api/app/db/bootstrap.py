@@ -12,6 +12,28 @@ from app.db.database import engine
 from app.db.models import Portfolio, User
 
 
+def _migrate_audit_log_columns() -> None:
+    """Add session_id and metadata_json to existing audit_logs tables."""
+    insp = inspect(engine)
+    if "audit_logs" not in insp.get_table_names():
+        return
+    dialect = engine.dialect.name
+    cols = {c["name"] for c in insp.get_columns("audit_logs")}
+    with engine.begin() as conn:
+        if "session_id" not in cols:
+            if dialect == "sqlite":
+                conn.execute(text("ALTER TABLE audit_logs ADD COLUMN session_id VARCHAR(64)"))
+            else:
+                conn.execute(text("ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS session_id VARCHAR(64)"))
+        if "metadata_json" not in cols:
+            if dialect == "sqlite":
+                conn.execute(text("ALTER TABLE audit_logs ADD COLUMN metadata_json TEXT DEFAULT '{}'"))
+            else:
+                conn.execute(
+                    text("ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS metadata_json TEXT DEFAULT '{}'")
+                )
+
+
 def _migrate_trade_metadata_columns() -> None:
     """Add paper trade attribution columns on existing DBs (SQLite / Postgres)."""
     insp = inspect(engine)
@@ -40,6 +62,7 @@ def _migrate_trade_metadata_columns() -> None:
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _migrate_trade_metadata_columns()
+    _migrate_audit_log_columns()
 
 
 def ensure_demo_user(db: Session, settings: Settings) -> None:
