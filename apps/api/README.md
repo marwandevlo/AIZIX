@@ -108,6 +108,39 @@ Open **http://localhost:8000** (full Jinja dashboard), **http://localhost:8000/d
 
 Reference: [`render.yaml`](./render.yaml) in this directory.
 
+#### Render troubleshooting (bcrypt / startup)
+
+If logs show **`ValueError: password cannot be longer than 72 bytes`** from **passlib/bcrypt**:
+
+1. Set **`DEMO_USER_PASSWORD=AizixDemo123!`** in Environment (demo seed uses this fixed password in code; never paste **`SECRET_KEY`** here).
+2. Keep **`SECRET_KEY`** / **`JWT_SECRET_KEY`** for JWT signing only — they are **not** bcrypt inputs for seeded users. Example short keys for smoke deploys: `aizix-secret-2026`.
+3. In the Render dashboard: **Manual Deploy** → **Clear build cache & deploy**.
+
+Smoke-check locally from **`apps/api`**:
+
+```bash
+python -m compileall app
+python check_render_startup.py
+```
+
+Expected output: **`OK`** (runs FastAPI lifespan once via `TestClient`, including demo seed).
+
+#### Recommended Render environment (after `git push`)
+
+Use **`Manual Deploy` → `Clear build cache & deploy`** after updating variables.
+
+| Variable | Example |
+|----------|---------|
+| `DEMO_USER_PASSWORD` | `AizixDemo123!` |
+| `SECRET_KEY` | `aizix-secret-2026` |
+| `JWT_SECRET_KEY` | `aizix-secret-2026` |
+| `PAPER_TRADING` | `true` |
+| `LIVE_TRADING_ENABLED` | `false` |
+| `BINANCE_PUBLIC_DATA` | `true` |
+| `DATABASE_URL` | `sqlite:////tmp/aizix.db` (ephemeral smoke) or your Postgres URI |
+
+Uvicorn should log **Application startup complete.**
+
 ### Railway (exact steps)
 
 1. Push your repository to GitHub (or connect GitLab if your Railway workflow supports it).

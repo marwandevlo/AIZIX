@@ -1,5 +1,12 @@
-from pydantic import AliasChoices, Field
+import logging
+
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
+_BCRYPT_MAX_PASSWORD_BYTES = 72
+_DEMO_PASSWORD_FALLBACK = "AizixDemo123!"
 
 
 class Settings(BaseSettings):
@@ -37,7 +44,10 @@ class Settings(BaseSettings):
     jwt_secret_key: str = Field(
         default="change-me-in-production",
         validation_alias=AliasChoices("JWT_SECRET_KEY", "SECRET_KEY"),
-        description="Signing key for JWTs. Prefer JWT_SECRET_KEY; SECRET_KEY is accepted as an alias.",
+        description=(
+            "JWT signing secret only (HS256). SECRET_KEY env is an alias for this field. "
+            "Never use this value as DEMO_USER_PASSWORD or pass it to bcrypt."
+        ),
     )
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     access_token_expire_minutes: int = Field(default=60 * 24 * 7, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
@@ -48,9 +58,12 @@ class Settings(BaseSettings):
     )
     demo_user_email: str = Field(default="demo@aizix.local", alias="DEMO_USER_EMAIL")
     demo_user_password: str = Field(
-        default="AizixDemo123!",
+        default=_DEMO_PASSWORD_FALLBACK,
         alias="DEMO_USER_PASSWORD",
-        description="Documentation only — seeded demo user hash uses DEMO_SEED_PASSWORD in bootstrap.",
+        description=(
+            "Reference only — startup seeding hashes DEMO_SEED_PASSWORD in bootstrap.py, not this field. "
+            "Values over 72 UTF-8 bytes are ignored (bcrypt limit)."
+        ),
     )
     binance_base_url: str = Field(default="https://api.binance.com", alias="BINANCE_BASE_URL")
     use_binance_market: bool = Field(
@@ -61,6 +74,20 @@ class Settings(BaseSettings):
 
     signal_latency_ms_min: int = 80
     signal_latency_ms_max: int = 280
+
+    @model_validator(mode="after")
+    def demo_password_never_breaks_bcrypt(self) -> Settings:
+        raw = self.demo_user_password
+        if len(raw.encode("utf-8")) <= _BCRYPT_MAX_PASSWORD_BYTES:
+            return self
+        logger.warning(
+            "DEMO_USER_PASSWORD is longer than %s bytes (bcrypt limit). "
+            "Ignoring env value; using %r instead. Do not set DEMO_USER_PASSWORD to SECRET_KEY/JWT_SECRET_KEY.",
+            _BCRYPT_MAX_PASSWORD_BYTES,
+            _DEMO_PASSWORD_FALLBACK,
+        )
+        object.__setattr__(self, "demo_user_password", _DEMO_PASSWORD_FALLBACK)
+        return self
 
 
 def get_settings() -> Settings:
