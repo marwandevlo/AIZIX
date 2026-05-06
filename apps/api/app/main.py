@@ -193,11 +193,17 @@ def _sync_portfolio_row(db: Session, user: User, dash: DashboardState, portfolio
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    print("AIZIX AUTH INIT")
     settings = get_settings()
     init_db()
     sdb = SessionLocal()
     try:
-        ensure_demo_user(sdb, settings)
+        print("AIZIX BOOTSTRAP")
+        try:
+            ensure_demo_user(sdb, settings)
+        except Exception as e:
+            # Emergency fallback: do not kill the server if auth/demo seeding hits bcrypt edge-cases.
+            logger.exception("Demo user bootstrap failed; continuing startup. error=%r", e)
     finally:
         sdb.close()
 
@@ -226,6 +232,7 @@ async def lifespan(app: FastAPI):
         "sqlite" if settings.database_url.startswith("sqlite") else "postgres",
         settings.api_port,
     )
+    print("AIZIX STARTUP COMPLETE")
     yield
 
 

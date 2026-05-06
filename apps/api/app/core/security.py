@@ -13,13 +13,18 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 BCRYPT_MAX_PASSWORD_BYTES = 72
 
 
-def _truncate_for_bcrypt(password: str) -> str:
-    """bcrypt rejects passwords longer than 72 bytes (UTF-8)."""
-    if not password:
+def safe_password(value: str) -> str:
+    """Return a bcrypt-safe password (<= 72 UTF-8 bytes).
+
+    Render production safety: bcrypt hard-limits to 72 bytes and passlib/bcrypt raises
+    ValueError when exceeded. This helper truncates on UTF-8 boundaries.
+    """
+    if not value:
         return ""
-    data = password.encode("utf-8")
+    data = value.encode("utf-8")
     if len(data) <= BCRYPT_MAX_PASSWORD_BYTES:
-        return password
+        return value
+
     cut = data[:BCRYPT_MAX_PASSWORD_BYTES]
     while cut:
         try:
@@ -30,11 +35,27 @@ def _truncate_for_bcrypt(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(_truncate_for_bcrypt(plain), hashed)
+    raw_len = len((plain or "").encode("utf-8"))
+    safe = safe_password(plain)
+    safe_len = len(safe.encode("utf-8"))
+    print("BCRYPT VERIFY INPUT LEN:", raw_len, "SAFE LEN:", safe_len)
+    if raw_len > BCRYPT_MAX_PASSWORD_BYTES:
+        print("BCRYPT WARNING: verify input exceeded 72 bytes; truncating safely.")
+    try:
+        return pwd_context.verify(safe, hashed)
+    except ValueError as e:
+        print("BCRYPT VERIFY ERROR:", repr(e))
+        return False
 
 
 def safe_hash(pwd: str) -> str:
-    return pwd_context.hash(_truncate_for_bcrypt(pwd))
+    raw_len = len((pwd or "").encode("utf-8"))
+    safe = safe_password(pwd)
+    safe_len = len(safe.encode("utf-8"))
+    print("BCRYPT HASH INPUT LEN:", raw_len, "SAFE LEN:", safe_len)
+    if raw_len > BCRYPT_MAX_PASSWORD_BYTES:
+        print("BCRYPT WARNING: hash input exceeded 72 bytes; truncating safely.")
+    return pwd_context.hash(safe)
 
 
 def get_password_hash(password: str) -> str:
