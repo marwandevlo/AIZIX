@@ -48,9 +48,15 @@
           return "Registration failed.";
         }
         if (typeof e?.message === "string" && e.message.trim()) return e.message;
+        if (e && typeof e === "object" && typeof e.toString === "function") {
+          const s = String(e);
+          if (s && s !== "[object Object]") return s;
+        }
         if (typeof e === "string" && e.trim()) return e;
         try {
-          return JSON.stringify(e);
+          const s = JSON.stringify(e);
+          if (s && s !== "{}") return s;
+          return "Registration failed.";
         } catch {
           return "Registration failed.";
         }
@@ -75,7 +81,16 @@
           const msg =
             e?.response?.data?.detail ||
             e?.message ||
-            (typeof e === "string" ? e : (() => { try { return JSON.stringify(e); } catch { return "Registration failed."; } })());
+            (typeof e === "string"
+              ? e
+              : (() => {
+                  try {
+                    const s = JSON.stringify(e);
+                    return s && s !== "{}" ? s : "Registration failed.";
+                  } catch {
+                    return "Registration failed.";
+                  }
+                })());
           err.textContent = msg;
         }
       });
