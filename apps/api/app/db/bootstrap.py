@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.security import get_password_hash
+
+# Fixed demo seed password — never derive from JWT_SECRET_KEY / SECRET_KEY (bcrypt max 72 bytes).
+DEMO_SEED_PASSWORD = "AizixDemo123!"
 from app.db.base import Base
 from app.db.database import engine
 from app.db.models import Portfolio, User
@@ -82,7 +85,7 @@ def ensure_demo_user(db: Session, settings: Settings) -> None:
         return
     user = User(
         email=email,
-        hashed_password=get_password_hash(settings.demo_user_password),
+        hashed_password=get_password_hash(DEMO_SEED_PASSWORD),
         balance_usd=12_540.25,
         prefs_json=json.dumps(
             {

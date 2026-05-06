@@ -47,7 +47,11 @@ class Settings(BaseSettings):
         description="If true, all protected routes require a valid JWT (SaaS mode).",
     )
     demo_user_email: str = Field(default="demo@aizix.local", alias="DEMO_USER_EMAIL")
-    demo_user_password: str = Field(default="demo1234", alias="DEMO_USER_PASSWORD")
+    demo_user_password: str = Field(
+        default="AizixDemo123!",
+        alias="DEMO_USER_PASSWORD",
+        description="Documentation only — seeded demo user hash uses DEMO_SEED_PASSWORD in bootstrap.",
+    )
     binance_base_url: str = Field(default="https://api.binance.com", alias="BINANCE_BASE_URL")
     use_binance_market: bool = Field(
         default=True,
