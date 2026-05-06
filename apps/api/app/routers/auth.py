@@ -16,7 +16,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 class RegisterBody(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(max_length=128)
 
 
 class LoginBody(BaseModel):
@@ -40,8 +40,13 @@ class UserOut(BaseModel):
 
 @router.post("/register", response_model=TokenResponse)
 def register(body: RegisterBody, db: Session = Depends(get_db)) -> TokenResponse:
+    if len(body.password or "") < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must contain at least 8 characters",
+        )
     if db.query(User).filter(User.email == body.email.lower()).first():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Account already exists")
     user = User(
         email=body.email.lower(),
         hashed_password=get_password_hash(body.password),

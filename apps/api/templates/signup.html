@@ -35,23 +35,49 @@
     </div>
     <script>
       const err = document.getElementById("err");
+      function extractErrorMessage(e) {
+        const maybeDetail = e?.detail;
+        if (typeof maybeDetail === "string" && maybeDetail.trim()) return maybeDetail;
+        if (Array.isArray(maybeDetail) && maybeDetail.length) {
+          const first = maybeDetail[0];
+          if (typeof first === "string") return first;
+          if (first && typeof first === "object") {
+            const msg = first.msg || first.message || first.detail;
+            if (typeof msg === "string" && msg.trim()) return msg;
+          }
+          return "Registration failed.";
+        }
+        if (typeof e?.message === "string" && e.message.trim()) return e.message;
+        if (typeof e === "string" && e.trim()) return e;
+        try {
+          return JSON.stringify(e);
+        } catch {
+          return "Registration failed.";
+        }
+      }
       document.getElementById("btn-go").addEventListener("click", async () => {
         err.textContent = "";
         const email = document.getElementById("email").value.trim();
         const password = document.getElementById("password").value;
-        const r = await fetch("/auth/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        });
-        if (!r.ok) {
-          const t = await r.json().catch(() => ({}));
-          err.textContent = t.detail || "Registration failed.";
-          return;
+        try {
+          const r = await fetch("/auth/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) {
+            throw new Error(extractErrorMessage(data));
+          }
+          localStorage.setItem("aizix_token", data.access_token);
+          window.location.href = "/";
+        } catch (e) {
+          const msg =
+            e?.response?.data?.detail ||
+            e?.message ||
+            (typeof e === "string" ? e : (() => { try { return JSON.stringify(e); } catch { return "Registration failed."; } })());
+          err.textContent = msg;
         }
-        const data = await r.json();
-        localStorage.setItem("aizix_token", data.access_token);
-        window.location.href = "/";
       });
     </script>
   </body>
