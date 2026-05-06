@@ -16,7 +16,7 @@ export function AuroraPositions() {
         <p className="mt-1 text-xs text-slate-500">Live sleeve exposure · Simulated book</p>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[32rem] text-left text-sm">
+        <table className="w-full min-w-xl text-left text-sm">
           <thead>
             <tr className="border-b border-white/10 text-aizix-micro font-bold uppercase tracking-widest text-slate-500">
               <th className="px-6 py-3">Pair</th>

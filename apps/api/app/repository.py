@@ -67,7 +67,7 @@ class MemoryRepository:
         self._state.daily_pnl_usd = round(max(-400.0, self._state.daily_pnl_usd + delta * 0.08), 2)
         self._state.total_balance_usd = round(max(2_000.0, self._state.total_balance_usd + delta * 0.05), 2)
         self._state.win_rate_pct = round(
-            min(92.0, max(55.0, self._state.win_rate_pct + r.uniform(-1.1, 1.1)), 2
+            min(92.0, max(55.0, self._state.win_rate_pct + r.uniform(-1.1, 1.1))), 2
         )
         b = wallet_balances(self._state.total_balance_usd, self._state.compounding_enabled)
         self._state.trading_balance_usd = b["trading_balance"]

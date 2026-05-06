@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="aizix-require-auth" content="{{ 'true' if require_auth else 'false' }}" />
+    <title>{{ title }} · Paper trading</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/css/style.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">AIZIX</span>
+        <span class="brand-sub">Trading OS</span>
+      </div>
+      <nav class="nav" id="main-nav">
+        <button type="button" class="nav-link active" data-view="dashboard">Dashboard</button>
+        <button type="button" class="nav-link" data-view="markets">Markets</button>
+        <button type="button" class="nav-link" data-view="signals">Signals</button>
+        <button type="button" class="nav-link" data-view="portfolio">Portfolio</button>
+        <button type="button" class="nav-link" data-view="performance">Performance</button>
+        <button type="button" class="nav-link" data-view="backtest">Backtesting</button>
+        <button type="button" class="nav-link" data-view="risk">Risk</button>
+        <button type="button" class="nav-link" data-view="settings">Settings</button>
+      </nav>
+      <div class="sidebar-foot muted">
+        Paper venue only.<br />No live order routing.
+      </div>
+    </aside>
+
+    <div class="main-wrap">
+      <header class="topbar">
+        <div class="topbar-left">
+          <span class="pill pill-warn">Paper trading mode</span>
+          <span class="status-line"><span class="dot" id="health-dot"></span><span id="health-label">API</span></span>
+        </div>
+        <div class="topbar-right">
+          <div class="balance-block">
+            <span class="muted tiny">Account balance</span>
+            <span class="num-lg mono" id="hdr-balance">—</span>
+          </div>
+          <div class="user-menu muted tiny" style="display:flex;flex-direction:column;align-items:flex-end;gap:0.25rem">
+            <span id="auth-label">Session</span>
+            <span style="display:flex;gap:0.5rem">
+              <a href="/login" class="muted tiny" id="auth-in">Sign in</a>
+              <button type="button" class="btn btn-ghost btn-xs" id="auth-out" style="display:none">Sign out</button>
+            </span>
+          </div>
+        </div>
+      </header>
+
+      <div class="views">
+        <section id="view-dashboard" class="view active">
+          <div class="metrics" id="metrics-row">
+            <article class="card metric">
+              <span class="metric-label">Portfolio value</span>
+              <span class="metric-value mono" id="m-portfolio">—</span>
+            </article>
+            <article class="card metric">
+              <span class="metric-label">Daily PnL</span>
+              <span class="metric-value mono" id="m-daily">—</span>
+            </article>
+            <article class="card metric">
+              <span class="metric-label">Win rate</span>
+              <span class="metric-value mono" id="m-winrate">—</span>
+            </article>
+            <article class="card metric">
+              <span class="metric-label">Drawdown</span>
+              <span class="metric-value mono" id="m-dd">—</span>
+            </article>
+            <article class="card metric">
+              <span class="metric-label">Risk exposure</span>
+              <span class="metric-value mono" id="m-exposure">—</span>
+            </article>
+          </div>
+
+          <div class="grid-primary">
+            <div class="card chart-card">
+              <div class="chart-head">
+                <span class="mono strong" id="chart-pair">BTC3L/USDT</span>
+                <div class="chart-price-row">
+                  <span class="mono num-xl" id="chart-price">—</span>
+                  <span class="mono" id="chart-chg">—</span>
+                </div>
+              </div>
+              <div class="tf-row" id="tf-row">
+                <button type="button" class="tf">1m</button>
+                <button type="button" class="tf">5m</button>
+                <button type="button" class="tf active">15m</button>
+                <button type="button" class="tf">1H</button>
+                <button type="button" class="tf">4H</button>
+                <button type="button" class="tf">1D</button>
+              </div>
+              <div class="chart-body">
+                <div class="chart-grid"></div>
+                <div class="candles" id="chart-candles"></div>
+              </div>
+              <div class="volume-row" id="chart-volume"></div>
+            </div>
+
+            <div class="card ai-card">
+              <h2 class="h2">AI decision</h2>
+              <div class="ai-main">
+                <div class="signal-badge mono" id="ai-action">—</div>
+                <div class="ai-meta">
+                  <div><span class="muted tiny">Confidence</span><div class="mono" id="ai-conf">—</div></div>
+                  <div><span class="muted tiny">Risk level</span><div class="mono" id="ai-risk">—</div></div>
+                </div>
+              </div>
+              <p class="reason" id="ai-reason">Awaiting signal refresh.</p>
+              <p class="muted tiny" id="ai-stance"></p>
+              <div class="bar-track"><div class="bar-fill" id="ai-bar"></div></div>
+              <p class="muted tiny suggested"><strong>Suggested:</strong> <span id="ai-suggested">—</span></p>
+            </div>
+
+            <div class="card bot-card">
+              <h2 class="h2">Bot control</h2>
+              <div class="bot-status mono" id="bot-status-pill">—</div>
+              <div class="btn-row4">
+                <button type="button" class="btn btn-success" id="btn-start">Start</button>
+                <button type="button" class="btn btn-warn" id="btn-pause">Pause</button>
+                <button type="button" class="btn btn-muted" id="btn-stop">Stop</button>
+              </div>
+              <button type="button" class="btn btn-danger btn-block" id="btn-emergency">Emergency stop</button>
+              <label class="field"><span class="muted tiny">Strategy</span>
+                <select id="sel-strategy">
+                  <option>AI Adaptive Strategy</option>
+                  <option>ETF Sleeve Momentum</option>
+                  <option>Trend Discipline</option>
+                </select>
+              </label>
+              <label class="field"><span class="muted tiny">Watch pair</span>
+                <select id="sel-pair">{% for p in pairs %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select>
+              </label>
+              <label class="field"><span class="muted tiny">Risk target</span>
+                <input type="range" id="risk-level" min="1" max="100" value="65" /><span class="mono val" id="risk-val">65</span>
+              </label>
+              <label class="field"><span class="muted tiny">Capital allocation %</span>
+                <input type="range" id="capital-usage" min="10" max="100" value="68" /><span class="mono val" id="capital-val">68%</span>
+              </label>
+              <label class="field"><span class="muted tiny">Max daily loss %</span>
+                <input type="range" id="max-daily-loss" min="1" max="15" step="0.5" value="5" /><span class="mono val" id="max-loss-val">5%</span>
+              </label>
+              <div class="field-grid">
+                <label><span class="muted tiny">SL %</span><input type="number" id="inp-sl" step="0.1" class="mono" /></label>
+                <label><span class="muted tiny">TP %</span><input type="number" id="inp-tp" step="0.1" class="mono" /></label>
+                <label><span class="muted tiny">Trail %</span><input type="number" id="inp-trail" step="0.05" class="mono" /></label>
+              </div>
+              <label class="field"><span class="muted tiny">Confidence threshold</span>
+                <input type="range" id="conf-thresh" min="40" max="95" value="60" /><span class="mono val" id="conf-val">60</span>
+              </label>
+              <div class="btn-inline">
+                <button type="button" class="btn btn-secondary" id="btn-paper-exec">Execute paper order</button>
+                <button type="button" class="btn btn-ghost" id="btn-close-all">Close all</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-secondary">
+            <div class="card">
+              <h2 class="h2">Open positions</h2>
+              <div class="table-scroll">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Pair</th><th>Type</th><th>Size</th><th>Entry</th><th>Mark</th><th>PnL</th><th>PnL %</th><th>Stop</th><th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-positions"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card">
+              <h2 class="h2">Recent trades</h2>
+              <div class="table-scroll">
+                <table class="table">
+                  <thead>
+                    <tr><th>Time</th><th>Pair</th><th>Side</th><th>PnL</th><th>PnL %</th></tr>
+                  </thead>
+                  <tbody id="tbody-trades"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card">
+              <h2 class="h2">Signal history</h2>
+              <div class="table-scroll">
+                <table class="table">
+                  <thead>
+                    <tr><th>Time</th><th>Pair</th><th>Signal</th><th>Conf</th><th>Risk</th></tr>
+                  </thead>
+                  <tbody id="tbody-signals"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="card compound-card">
+            <h2 class="h2">Compounding</h2>
+            <div class="compound-grid">
+              <div>
+                <span class="muted tiny">Trading wallet</span>
+                <div class="mono strong" id="w-trading">—</div>
+              </div>
+              <div>
+                <span class="muted tiny">Safety wallet</span>
+                <div class="mono strong" id="w-safe">—</div>
+              </div>
+              <div>
+                <span class="muted tiny">Split</span>
+                <div class="mono strong"><span id="split-a">70</span>% / <span id="split-b">30</span>%</div>
+              </div>
+              <label class="toggle-row"><span class="muted tiny">Auto-compound</span><input type="checkbox" id="compound-on" /></label>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-markets" class="view">
+          <div class="card">
+            <h2 class="h2">Markets</h2>
+            <div class="table-scroll">
+              <table class="table">
+                <thead><tr><th>Pair</th><th>Price</th><th>Momentum</th><th>24h volume</th></tr></thead>
+                <tbody id="tbody-markets"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-signals" class="view">
+          <div class="card">
+            <h2 class="h2">Multi-pair monitor</h2>
+            <div class="table-scroll">
+              <table class="table">
+                <thead><tr><th>Pair</th><th>Signal</th><th>Confidence</th><th>Risk score</th><th>Risk level</th><th>Read-out</th></tr></thead>
+                <tbody id="tbody-all-signals"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-portfolio" class="view">
+          <div class="card">
+            <h2 class="h2">Portfolio overview</h2>
+            <p class="muted">Mirrors dashboard metrics and positions. Values refresh with the same polling loop.</p>
+            <div class="metrics metrics-inner">
+              <article class="card metric"><span class="metric-label">Portfolio value</span><span class="metric-value mono" id="p-portfolio">—</span></article>
+              <article class="card metric"><span class="metric-label">Win rate</span><span class="metric-value mono" id="p-win">—</span></article>
+              <article class="card metric"><span class="metric-label">Drawdown</span><span class="metric-value mono" id="p-dd">—</span></article>
+            </div>
+            <div class="table-scroll">
+              <table class="table">
+                <thead><tr><th>Pair</th><th>Type</th><th>Size</th><th>Entry</th><th>Mark</th><th>PnL</th><th>PnL %</th><th>Stop</th></tr></thead>
+                <tbody id="tbody-portfolio-pos"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-performance" class="view">
+          <div class="perf-hero card">
+            <div class="perf-hero-top">
+              <div>
+                <h2 class="h2">Performance</h2>
+                <p class="perf-lead muted">Verifiable paper-trading statistics from your closed trades. No broker fills, no live capital.</p>
+              </div>
+              <span class="perf-scope mono tiny" id="perf-scope">—</span>
+            </div>
+            <p class="perf-disclaimer" id="perf-disclaimer">Paper trading results. Not financial advice. Live trading disabled.</p>
+          </div>
+
+          <div class="metrics perf-metrics" id="perf-metrics-row">
+            <article class="card metric"><span class="metric-label">Total paper trades</span><span class="metric-value mono" id="perf-m-trades">—</span></article>
+            <article class="card metric"><span class="metric-label">Win rate</span><span class="metric-value mono" id="perf-m-winrate">—</span></article>
+            <article class="card metric"><span class="metric-label">Profit factor</span><span class="metric-value mono" id="perf-m-pf">—</span></article>
+            <article class="card metric"><span class="metric-label">Max drawdown</span><span class="metric-value mono" id="perf-m-dd">—</span></article>
+            <article class="card metric"><span class="metric-label">Avg trade return</span><span class="metric-value mono" id="perf-m-avgret">—</span></article>
+            <article class="card metric"><span class="metric-label">Best trade</span><span class="metric-value mono" id="perf-m-best">—</span></article>
+            <article class="card metric"><span class="metric-label">Worst trade</span><span class="metric-value mono" id="perf-m-worst">—</span></article>
+            <article class="card metric">
+              <span class="metric-label">Daily PnL (UTC, today)</span>
+              <span class="metric-value mono" id="perf-m-daily">—</span>
+              <span class="muted tiny perf-metric-sub" id="perf-m-session">Session book accum.: —</span>
+            </article>
+            <article class="card metric"><span class="metric-label">Total PnL</span><span class="metric-value mono" id="perf-m-total">—</span></article>
+          </div>
+
+          <div class="card perf-chart-card">
+            <div class="perf-chart-head">
+              <span class="h2">Equity (paper, post-trade)</span>
+              <span class="muted tiny mono" id="perf-equity-start">Starting —</span>
+            </div>
+            <p class="muted tiny perf-chart-note">Curve uses starting account balance plus cumulative realized PnL from closed paper legs.</p>
+            <div class="equity-wrap perf-equity-wrap">
+              <svg id="perf-equity-svg" viewBox="0 0 400 120" preserveAspectRatio="none" class="equity-svg"></svg>
+            </div>
+          </div>
+
+          <div class="perf-tables">
+            <div class="card">
+              <h2 class="h2">Trade history</h2>
+              <p class="muted tiny">Most recent first. Metadata is stored when positions are opened from the dashboard.</p>
+              <div class="table-scroll">
+                <table class="table table-tight">
+                  <thead>
+                    <tr>
+                      <th>Time</th><th>Symbol</th><th>Side</th><th>Entry</th><th>Exit</th><th>PnL</th><th>Conf.</th><th>Risk</th><th>Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody id="perf-tbody-trades"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card">
+              <h2 class="h2">Daily performance</h2>
+              <p class="muted tiny">Aggregated by close timestamp (UTC). Drawdown is peak-to-trough on cumulative equity through each day.</p>
+              <div class="table-scroll">
+                <table class="table table-tight">
+                  <thead>
+                    <tr><th>Date</th><th>Trades</th><th>Wins</th><th>Losses</th><th>Net PnL</th><th>Drawdown</th></tr>
+                  </thead>
+                  <tbody id="perf-tbody-daily"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-backtest" class="view">
+          <div class="card">
+            <h2 class="h2">Backtesting</h2>
+            <div class="bt-form">
+              <label><span class="muted tiny">Pair</span>
+                <select id="bt-pair">{% for p in pairs %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select>
+              </label>
+              <label><span class="muted tiny">Data</span>
+                <select id="bt-source">
+                  <option value="binance" selected>Binance history</option>
+                  <option value="synthetic">Synthetic</option>
+                </select>
+              </label>
+              <label><span class="muted tiny">SL %</span><input type="number" id="bt-sl" value="2" step="0.1" /></label>
+              <label><span class="muted tiny">TP %</span><input type="number" id="bt-tp" value="4" step="0.1" /></label>
+              <label><span class="muted tiny">Days</span><input type="number" id="bt-days" value="120" min="10" max="365" /></label>
+              <label><span class="muted tiny">Optimize for</span>
+                <select id="bt-objective">
+                  <option value="return_over_drawdown" selected>Return ÷ max drawdown</option>
+                  <option value="total_return">Total return</option>
+                  <option value="profit_factor">Profit factor</option>
+                </select>
+              </label>
+              <button type="button" class="btn btn-secondary" id="btn-bt-run">Run simulation</button>
+              <button type="button" class="btn btn-ghost" id="btn-bt-compare">Compare sleeves</button>
+            </div>
+            <div class="bt-summary" id="bt-summary">
+              <p class="bt-summary-empty muted tiny" id="bt-summary-empty">Run a simulation to see performance metrics.</p>
+              <div class="bt-summary-content" id="bt-summary-content" hidden>
+                <div class="bt-summary-head">
+                  <span class="bt-summary-subtitle mono tiny" id="bt-summary-subtitle"></span>
+                  <span class="bt-summary-objective muted tiny" id="bt-summary-objective"></span>
+                </div>
+                <div class="metrics bt-summary-metrics" id="bt-summary-metrics"></div>
+                <p class="bt-summary-note muted tiny" id="bt-summary-note"></p>
+              </div>
+            </div>
+            <div class="equity-wrap">
+              <span class="muted tiny">Equity curve</span>
+              <svg id="equity-svg" viewBox="0 0 400 120" preserveAspectRatio="none" class="equity-svg"></svg>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-risk" class="view">
+          <div class="card">
+            <h2 class="h2">Risk controller</h2>
+            <pre class="risk-pre mono tiny" id="risk-json"></pre>
+            <p class="muted tiny">Daily loss budget and per-trade caps gate paper execution. Tune max daily loss under Dashboard controls or here via Settings sync.</p>
+          </div>
+        </section>
+
+        <section id="view-settings" class="view">
+          <div class="card">
+            <h2 class="h2">Settings</h2>
+            <label class="field"><input type="checkbox" id="sound-on" /> Sound alerts</label>
+            <label class="field"><span class="muted tiny">Poll interval scale</span>
+              <input type="range" id="poll-speed" min="0.5" max="3" step="0.25" value="1" />
+            </label>
+            <h3 class="h3 muted tiny" style="margin-top:1.25rem">Saved strategies</h3>
+            <p class="muted tiny">Save the current SL/TP/trail/risk knobs, then apply them to the bot.</p>
+            <div class="field" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center">
+              <input type="text" id="strategy-save-name" placeholder="My strategy name" style="min-width:200px;padding:0.45rem 0.6rem;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0" />
+              <button type="button" class="btn btn-secondary btn-xs" id="btn-strategy-save">Save current</button>
+            </div>
+            <div class="field" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-top:0.75rem">
+              <select id="saved-strategies" style="min-width:220px;padding:0.45rem;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0"></select>
+              <button type="button" class="btn btn-ghost btn-xs" id="btn-strategy-apply">Apply to bot</button>
+            </div>
+            <pre class="risk-pre mono tiny" id="strategy-status" style="margin-top:0.75rem;min-height:2rem"></pre>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script src="/static/js/dashboard.js" defer></script>
+  </body>
+</html>

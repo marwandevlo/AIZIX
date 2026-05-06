@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title }} · AIZIX</title>
+    <link rel="stylesheet" href="/static/css/style.css" />
+    <style>
+      .auth-wrap { max-width: 420px; margin: 4rem auto; padding: 2rem; }
+      .auth-wrap h1 { margin-top: 0; font-weight: 600; }
+      .auth-field { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 1rem; }
+      .auth-field input { padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; }
+      .auth-actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+      .auth-error { color: #f87171; font-size: 0.875rem; min-height: 1.25rem; }
+    </style>
+  </head>
+  <body style="margin:0;min-height:100vh;background:#060816;color:#e2e8f0;font-family:system-ui,sans-serif">
+    <div class="auth-wrap card">
+      <h1>Create account</h1>
+      <p class="muted tiny">8+ characters. You receive a JWT for API calls.</p>
+      <div class="auth-field">
+        <label class="muted tiny" for="email">Email</label>
+        <input id="email" type="email" autocomplete="username" />
+      </div>
+      <div class="auth-field">
+        <label class="muted tiny" for="password">Password</label>
+        <input id="password" type="password" autocomplete="new-password" />
+      </div>
+      <div class="auth-error" id="err"></div>
+      <div class="auth-actions">
+        <button type="button" class="btn btn-secondary" id="btn-go">Sign up</button>
+        <a class="muted tiny" href="/login">Sign in</a>
+        <a class="muted tiny" href="/">← Console</a>
+      </div>
+    </div>
+    <script>
+      const err = document.getElementById("err");
+      document.getElementById("btn-go").addEventListener("click", async () => {
+        err.textContent = "";
+        const email = document.getElementById("email").value.trim();
+        const password = document.getElementById("password").value;
+        const r = await fetch("/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        if (!r.ok) {
+          const t = await r.json().catch(() => ({}));
+          err.textContent = t.detail || "Registration failed.";
+          return;
+        }
+        const data = await r.json();
+        localStorage.setItem("aizix_token", data.access_token);
+        window.location.href = "/";
+      });
+    </script>
+  </body>
+</html>
