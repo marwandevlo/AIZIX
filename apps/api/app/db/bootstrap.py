@@ -11,7 +11,8 @@ from app.db.base import Base
 from app.db.database import engine
 from app.db.models import Portfolio, User
 
-# Fixed demo seed password — never derive from JWT_SECRET_KEY / SECRET_KEY (bcrypt limit 72 bytes).
+# Literal demo password only — never read DEMO_USER_PASSWORD / settings.demo_user_password here.
+# Rendering env secrets (e.g. SECRET_KEY pasted into demo password) through bcrypt caused 72-byte crashes.
 DEMO_SEED_PASSWORD = "AizixDemo123!"
 
 
@@ -69,6 +70,8 @@ def init_db() -> None:
 
 
 def ensure_demo_user(db: Session, settings: Settings) -> None:
+    print("AIZIX BOOTSTRAP USING FIXED DEMO PASSWORD")
+    # Email only from settings; password is always DEMO_SEED_PASSWORD (never env).
     email = settings.demo_user_email
     u = db.query(User).filter(User.email == email).one_or_none()
     if u:

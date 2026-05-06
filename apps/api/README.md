@@ -112,7 +112,7 @@ Reference: [`render.yaml`](./render.yaml) in this directory.
 
 If logs show **`ValueError: password cannot be longer than 72 bytes`** from **passlib/bcrypt**:
 
-1. Set **`DEMO_USER_PASSWORD=AizixDemo123!`** in Environment (demo seed uses this fixed password in code; never paste **`SECRET_KEY`** here).
+1. **`DEMO_USER_PASSWORD`** on Render is ignored by the API (docs only). The seeded demo login is always **`AizixDemo123!`** (`DEMO_SEED_PASSWORD` in `app/db/bootstrap.py`). Never paste **`SECRET_KEY`** into any user-password path.
 2. Keep **`SECRET_KEY`** / **`JWT_SECRET_KEY`** for JWT signing only — they are **not** bcrypt inputs for seeded users. Example short keys for smoke deploys: `aizix-secret-2026`.
 3. In the Render dashboard: **Manual Deploy** → **Clear build cache & deploy**.
 
@@ -131,7 +131,7 @@ Use **`Manual Deploy` → `Clear build cache & deploy`** after updating variable
 
 | Variable | Example |
 |----------|---------|
-| `DEMO_USER_PASSWORD` | `AizixDemo123!` |
+| `DEMO_USER_PASSWORD` | Optional (ignored — demo password is fixed in code) |
 | `SECRET_KEY` | `aizix-secret-2026` |
 | `JWT_SECRET_KEY` | `aizix-secret-2026` |
 | `PAPER_TRADING` | `true` |
